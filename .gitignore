@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Data (local user data — never commit)
+data/expenses.csv
+data/budgets.csv
+data/custom_keywords.csv
+data/attachments/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+secrets.toml
+
+# Node / Next.js (for future frontend)
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
