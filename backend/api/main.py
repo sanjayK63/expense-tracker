@@ -8,8 +8,8 @@ import os
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "https://expense-tracker-2-2ehp.onrender.com",  # frontend
-    "https://expense-tracker-1-yeu4.onrender.com",  # backend (self)
+    "https://expense-tracker-2-2ehp.onrender.com",       # frontend
+    "https://expense-tracker-backend-406s.onrender.com", # backend (self)
     os.getenv("FRONTEND_URL", ""),
 ]
 ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com|onrender\.com|vercel\.app)"
