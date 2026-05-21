@@ -63,6 +63,15 @@ export const importApi = {
   },
   confirmPdf: (rows: Expense[]) =>
     api.post("/import/pdf/confirm", { rows }),
+
+  uploadSheet: (file: File, accountName: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("account_name", accountName);
+    return api.post("/import/csv", form);
+  },
+  confirmSheet: (rows: Expense[]) =>
+    api.post("/import/csv/confirm", { rows }),
 };
 
 export const reportsApi = {

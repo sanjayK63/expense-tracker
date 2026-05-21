@@ -4,9 +4,19 @@ from api.routers import expenses, budgets, import_pdf, import_csv, whatsapp, rep
 
 app = FastAPI(title="Expense Tracker API", version="2.0.0")
 
+import os
+
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    os.getenv("FRONTEND_URL", ""),        # set this in Cloud Run env vars
+]
+# Allow all *.web.app and *.firebaseapp.com subdomains
+ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com)"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://your-domain.vercel.app"],
+    allow_origins=[o for o in ALLOWED_ORIGINS if o],
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

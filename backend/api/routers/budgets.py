@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Header
 from pydantic import BaseModel
 from api.services.auth_helper import require_user
-from api.db import get_client
+from api.db import get_admin_client as get_client
 
 router = APIRouter()
 

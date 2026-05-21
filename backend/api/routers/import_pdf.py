@@ -1,9 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
+from pydantic import BaseModel
+from typing import Any
 from api.services.auth_helper import require_user
 from api.parsers.slice_cc import parse_slice_statement
 from api.parsers.bob_cc import parse_bob_statement
 from api.parsers.generic import parse_generic_statement
 from api.services.categorizer import detect_category
+from api.db import get_admin_client
 import uuid
 
 router = APIRouter()
@@ -51,19 +54,33 @@ async def import_pdf(
     }
 
 
+class ConfirmBody(BaseModel):
+    rows: list[dict[str, Any]]
+
+
 @router.post("/pdf/confirm")
 async def confirm_pdf_import(
-    body: dict,
+    body: ConfirmBody,
     authorization: str = Header(...),
 ):
     """Bulk-insert rows returned by /import/pdf after user reviews preview."""
     user_id = await require_user(authorization)
-    from api.db import get_client
-    rows = body.get("rows", [])
-    if not rows:
+    if not body.rows:
         raise HTTPException(400, "No rows to import")
-    for r in rows:
-        r["user_id"] = user_id  # enforce ownership
-    client = get_client()
+    client = get_admin_client()
+    # Enforce ownership and strip frontend-only fields
+    rows = []
+    for r in body.rows:
+        rows.append({
+            "id":             r.get("id") or str(uuid.uuid4()),
+            "user_id":        user_id,
+            "date":           r["date"],
+            "amount":         float(r["amount"]),
+            "category":       r.get("category", "Others"),
+            "description":    r.get("description", ""),
+            "payment_method": r.get("payment_method", "UPI"),
+            "source":         r.get("source", ""),
+            "type":           r.get("type", "Debit"),
+        })
     result = client.table("expenses").insert(rows).execute()
     return {"imported": len(result.data)}

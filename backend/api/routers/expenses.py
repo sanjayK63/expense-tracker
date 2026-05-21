@@ -2,7 +2,8 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 from datetime import date
 from typing import Optional
-from api.db import get_client
+import calendar
+from api.db import get_admin_client as get_client
 from api.services.auth_helper import require_user
 
 router = APIRouter()
@@ -36,8 +37,9 @@ async def list_expenses(
     client  = get_client()
     q = client.table("expenses").select("*").eq("user_id", user_id)
     if month and year:
-        from_d = f"{year}-{month:02d}-01"
-        to_d   = f"{year}-{month:02d}-31"
+        last_day = calendar.monthrange(year, month)[1]
+        from_d   = f"{year}-{month:02d}-01"
+        to_d     = f"{year}-{month:02d}-{last_day:02d}"
         q = q.gte("date", from_d).lte("date", to_d)
     if category:
         q = q.eq("category", category)

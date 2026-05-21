@@ -4,7 +4,8 @@ Year-over-year reports + monthly PDF/Excel summary.
 from fastapi import APIRouter, Header, Query
 from fastapi.responses import StreamingResponse
 from api.services.auth_helper import require_user
-from api.db import get_client
+from api.db import get_admin_client as get_client
+import calendar
 import io
 
 router = APIRouter()
@@ -16,10 +17,11 @@ async def monthly_summary(
     month: int = Query(...),
     authorization: str = Header(...),
 ):
-    user_id = await require_user(authorization)
-    from_d  = f"{year}-{month:02d}-01"
-    to_d    = f"{year}-{month:02d}-31"
-    result  = (
+    user_id  = await require_user(authorization)
+    last_day = calendar.monthrange(year, month)[1]
+    from_d   = f"{year}-{month:02d}-01"
+    to_d     = f"{year}-{month:02d}-{last_day:02d}"
+    result   = (
         get_client().table("expenses")
         .select("*")
         .eq("user_id", user_id)
@@ -109,9 +111,10 @@ async def export_excel(
 ):
     """Download monthly expenses as XLSX."""
     import pandas as pd
-    user_id = await require_user(authorization)
-    from_d  = f"{year}-{month:02d}-01"
-    to_d    = f"{year}-{month:02d}-31"
+    user_id  = await require_user(authorization)
+    last_day = calendar.monthrange(year, month)[1]
+    from_d   = f"{year}-{month:02d}-01"
+    to_d     = f"{year}-{month:02d}-{last_day:02d}"
     result  = (
         get_client().table("expenses")
         .select("date, amount, category, description, payment_method, source")
