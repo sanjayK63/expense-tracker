@@ -8,9 +8,9 @@ import os
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    os.getenv("FRONTEND_URL", ""),        # set this in Cloud Run env vars
+    "https://expense-tracker-2-2ehp.onrender.com",
+    os.getenv("FRONTEND_URL", ""),
 ]
-# Allow all *.web.app and *.firebaseapp.com subdomains
 ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com|onrender\.com|vercel\.app)"
 
 app.add_middleware(
