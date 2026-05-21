@@ -11,7 +11,7 @@ ALLOWED_ORIGINS = [
     os.getenv("FRONTEND_URL", ""),        # set this in Cloud Run env vars
 ]
 # Allow all *.web.app and *.firebaseapp.com subdomains
-ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com)"
+ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com|onrender\.com|vercel\.app)"
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +30,10 @@ app.include_router(import_csv.router,  prefix="/import",   tags=["import"])
 app.include_router(whatsapp.router,    prefix="/whatsapp", tags=["whatsapp"])
 app.include_router(reports.router,     prefix="/reports",  tags=["reports"])
 
+
+@app.get("/")
+def root():
+    return {"status": "ok", "message": "Expense Tracker API", "version": "2.0.0"}
 
 @app.get("/health")
 def health():
