@@ -12,6 +12,18 @@ import io
 
 router = APIRouter()
 
+MAX_SHEET_SIZE  = 20 * 1024 * 1024   # 20 MB
+MAX_IMPORT_ROWS = 5_000
+
+ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls", "xlsb"}
+ALLOWED_MIMES = {
+    "text/csv", "application/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    "application/octet-stream",   # some browsers send this for xlsx
+}
+
 # ── Column name patterns (lowercase) ──────────────────────────────────────────
 _DATE_HINTS   = ["date", "txn date", "transaction date", "value date", "posting date",
                  "trans date", "tran date"]
@@ -58,8 +70,13 @@ async def import_csv(
     authorization: str = Header(...),
 ):
     user_id    = await require_user(authorization)
-    file_bytes = await file.read()
-    ext        = (file.filename or "").rsplit(".", 1)[-1].lower()
+    file_bytes = await file.read(MAX_SHEET_SIZE + 1)
+    if len(file_bytes) > MAX_SHEET_SIZE:
+        raise HTTPException(413, "File too large. Maximum size is 20 MB.")
+
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported file type '.{ext}'. Use CSV, XLSX, XLS, or XLSB.")
 
     # ── Read file ──────────────────────────────────────────────────────────────
     try:
@@ -143,6 +160,7 @@ async def import_csv(
     if not rows:
         raise HTTPException(400, "No valid rows found after parsing. Check the file format.")
 
+    rows = rows[:MAX_IMPORT_ROWS]
     return {"rows": rows, "total": len(rows)}
 
 

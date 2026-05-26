@@ -1,31 +1,32 @@
 """
 WhatsApp expense bot via Twilio sandbox.
-
-Setup:
-  1. Create Twilio account at twilio.com
-  2. Enable WhatsApp sandbox: console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn
-  3. Set webhook URL to: https://your-api.railway.app/whatsapp/webhook
-  4. Add TWILIO_* env vars
-
-Message formats accepted:
-  "Zomato 450"                    → Food, ₹450
-  "Zomato 450 food"               → Food, ₹450 (explicit category)
-  "petrol 800 transport"          → Transport, ₹800
-  "balance"                       → returns current month summary
-  "report"                        → sends mini report
+All incoming webhooks are signature-validated against TWILIO_AUTH_TOKEN.
+The /link endpoint requires a valid Supabase JWT.
 """
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, Header, HTTPException
 from api.services.categorizer import detect_category
 from api.services.whatsapp_parser import parse_whatsapp_message
-from api.db import get_client
+from api.services.auth_helper import require_user
+from api.db import get_admin_client
+from api.config import settings
 import uuid
 from datetime import date
 
 router = APIRouter()
 
-# Map WhatsApp sender number → Supabase user_id
-# In production, stored in a whatsapp_users table
-PHONE_USER_MAP: dict[str, str] = {}
+
+def _validate_twilio_signature(request: Request, form_data: dict) -> bool:
+    """Validate that the webhook actually came from Twilio."""
+    if not settings.twilio_auth_token:
+        return True  # Skip validation if Twilio not configured (dev mode)
+    try:
+        from twilio.request_validator import RequestValidator
+        validator = RequestValidator(settings.twilio_auth_token)
+        signature = request.headers.get("X-Twilio-Signature", "")
+        url = str(request.url)
+        return validator.validate(url, form_data, signature)
+    except Exception:
+        return False
 
 
 @router.post("/webhook")
@@ -33,19 +34,27 @@ async def whatsapp_webhook(request: Request):
     """Twilio sends a form-encoded POST on every incoming WhatsApp message."""
     from twilio.twiml.messaging_response import MessagingResponse
 
-    form = await request.form()
-    body   = str(form.get("Body", "")).strip()
-    sender = str(form.get("From", ""))
+    form      = await request.form()
+    form_dict = dict(form)
 
-    user_id = PHONE_USER_MAP.get(sender)
+    # ── Security: validate Twilio signature ──────────────────────────────────
+    if not _validate_twilio_signature(request, form_dict):
+        return Response(status_code=403, content="Invalid signature")
+
+    body   = str(form_dict.get("Body", "")).strip()
+    sender = str(form_dict.get("From", ""))
+
+    # Look up user from DB (not in-memory map)
+    client  = get_admin_client()
+    result  = client.table("whatsapp_users").select("user_id").eq("phone", sender).execute()
+    user_id = result.data[0]["user_id"] if result.data else None
 
     twiml = MessagingResponse()
 
     if not user_id:
         twiml.message(
             "👋 Hi! I'm your Expense Bot.\n"
-            "To link this number to your account, open the app and go to "
-            "Settings → Link WhatsApp."
+            "To link this number, open the app → Settings → Link WhatsApp."
         )
         return Response(content=str(twiml), media_type="application/xml")
 
@@ -54,7 +63,7 @@ async def whatsapp_webhook(request: Request):
     if parsed is None:
         twiml.message(
             "❓ I didn't understand that.\n\n"
-            "Try:\n• *Zomato 450* → log expense\n• *balance* → month summary\n• *report* → mini report"
+            "Try:\n• *Zomato 450* → log expense\n• *balance* → month summary"
         )
         return Response(content=str(twiml), media_type="application/xml")
 
@@ -69,35 +78,49 @@ async def whatsapp_webhook(request: Request):
             "payment_method": "UPI",
             "source":         "WhatsApp Bot",
         }
-        get_client().table("expenses").insert(row).execute()
+        client.table("expenses").insert(row).execute()
         twiml.message(
             f"✅ Logged ₹{parsed['amount']:,.0f} under *{row['category']}*\n"
             f"_{parsed['description']}_"
         )
 
     elif parsed["type"] == "balance":
-        # Quick month summary
-        today = date.today()
+        today  = date.today()
         from_d = f"{today.year}-{today.month:02d}-01"
-        result = (
-            get_client().table("expenses")
-            .select("amount, category")
+        res    = (
+            client.table("expenses")
+            .select("amount")
             .eq("user_id", user_id)
             .gte("date", from_d)
             .execute()
         )
-        total = sum(r["amount"] for r in result.data)
-        twiml.message(f"📊 *{today.strftime('%B %Y')}*\nTotal spent: ₹{total:,.2f}\nTransactions: {len(result.data)}")
+        total = sum(r["amount"] for r in res.data)
+        twiml.message(
+            f"📊 *{today.strftime('%B %Y')}*\n"
+            f"Total spent: ₹{total:,.2f}\nTransactions: {len(res.data)}"
+        )
 
     return Response(content=str(twiml), media_type="application/xml")
 
 
 @router.post("/link")
-async def link_whatsapp(body: dict):
-    """Frontend calls this after user submits their WhatsApp number in settings."""
-    phone   = body.get("phone")
-    user_id = body.get("user_id")
-    if phone and user_id:
-        PHONE_USER_MAP[f"whatsapp:{phone}"] = user_id
-        return {"status": "linked"}
-    return {"status": "error", "detail": "phone and user_id required"}
+async def link_whatsapp(body: dict, authorization: str = Header(...)):
+    """
+    Authenticated endpoint — user must be logged in to link their phone.
+    Stores the mapping in the whatsapp_users DB table (not in-memory).
+    """
+    user_id = await require_user(authorization)
+    phone   = str(body.get("phone", "")).strip()
+    if not phone:
+        raise HTTPException(400, "phone is required")
+
+    # Normalise to whatsapp:+91XXXXXXXXXX format
+    if not phone.startswith("whatsapp:"):
+        phone = f"whatsapp:{phone}"
+
+    client = get_admin_client()
+    client.table("whatsapp_users").upsert(
+        {"phone": phone, "user_id": user_id},
+        on_conflict="phone"
+    ).execute()
+    return {"status": "linked"}

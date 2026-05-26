@@ -11,6 +11,9 @@ import uuid
 
 router = APIRouter()
 
+MAX_PDF_SIZE  = 20 * 1024 * 1024   # 20 MB
+MAX_IMPORT_ROWS = 5_000             # safety cap per import
+
 
 @router.post("/pdf")
 async def import_pdf(
@@ -20,7 +23,13 @@ async def import_pdf(
     authorization: str = Header(...),
 ):
     user_id    = await require_user(authorization)
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_PDF_SIZE + 1)
+    if len(file_bytes) > MAX_PDF_SIZE:
+        raise HTTPException(413, "File too large. Maximum size is 20 MB.")
+
+    # Validate PDF magic bytes
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(400, "File does not appear to be a valid PDF.")
 
     # Try parsers in priority order
     df, note = parse_slice_statement(file_bytes, password=password)
@@ -46,11 +55,13 @@ async def import_pdf(
             "type":           str(row.get("Type", "Debit")),
         })
 
+    # Cap rows to prevent runaway imports
+    rows = rows[:MAX_IMPORT_ROWS]
     return {
         "preview":  rows[:10],
         "total":    len(rows),
         "note":     note,
-        "rows":     rows,       # full payload — frontend calls POST /expenses/bulk to confirm
+        "rows":     rows,
     }
 
 

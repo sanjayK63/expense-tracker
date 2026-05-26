@@ -12,15 +12,12 @@ ALLOWED_ORIGINS = [
     "https://expense-tracker-backend-406s.onrender.com", # backend (self)
     os.getenv("FRONTEND_URL", ""),
 ]
-ALLOWED_ORIGIN_REGEX = r"https://.*\.(web\.app|firebaseapp\.com|onrender\.com|vercel\.app)"
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o for o in ALLOWED_ORIGINS if o],
-    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 app.include_router(auth.router,        prefix="/auth",     tags=["auth"])
